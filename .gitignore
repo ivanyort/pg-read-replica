@@ -1,0 +1,8 @@
+# envs e segredos
+.env
+*.env
+# artefatos locais
+*.log
+# volumes (se algum dia usar bind mounts)
+data/
+
