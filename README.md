@@ -1,5 +1,25 @@
 # 🐘 PostgreSQL 16 Primary/Replica with Docker Compose
 
+PostgreSQL 16 introduced the ability to create logical replication slots and perform logical decoding on standby (read replica) servers — a major enhancement for high availability and CDC workloads.
+
+### What Changed
+
+**Before PostgreSQL 16:** When you attempted to create a logical replication slot on a standby server, PostgreSQL would return an error saying:
+
+> “logical decoding cannot be used while in recovery”
+
+CDC tools like **Debezium** had to connect directly to the primary server to capture data changes.
+
+**PostgreSQL 16 and Later:** You can now point CDC tools such as **Qlik Replicate** to a replica server instead of connecting to your primary. This works for logical replication and logical decoding operations.
+
+### Key Benefits
+
+**Load Distribution:** Offload CDC operations to read replicas, reducing the workload on your primary database.
+
+**Seamless Failover:** If a standby is promoted to primary, CDC tools continue seamlessly following the logical replication stream without interruption.
+
+**High Availability for CDC:** Enables new architectures for high availability and data synchronization across multiple systems or for auditing purposes.
+
 This project provides a **ready-to-run PostgreSQL 16 replication environment** using **Docker Compose**.  
 It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**, **Debezium**, or **pgoutput**.
 
