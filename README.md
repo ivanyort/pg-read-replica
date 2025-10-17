@@ -1,23 +1,62 @@
-# Postgres 16 Primary/Replica via Docker Compose
+# 🐘 PostgreSQL 16 Primary/Replica with Docker Compose
 
-Replicação física (streaming) com `pg_basebackup` e slot, sem healthcheck barulhento.
+This project provides a **ready-to-run PostgreSQL 16 replication environment** using **Docker Compose**.  
+It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**, **Debezium**, or **pgoutput**.
 
-## Subir
+## 🔍 Overview
 
-1. Copie `.env.example` para `.env` e edite senhas.
-2. `docker compose up -d`
+The environment consists of two PostgreSQL containers:
 
-## Arquivos
+| Role | Description |
+|------|--------------|
+| **Primary** | Initializes the main database cluster, enables WAL streaming and replication slots, and exposes port `5432`. |
+| **Replica** | Automatically bootstraps from the primary using a custom `replica-entrypoint.sh`, keeps in sync through streaming replication, and runs on port `5433`. |
 
-- `docker-compose.yaml` — serviços `pg-primary` e `pg-replica`
-- `replica-entrypoint.sh` — corrige permissões, espera o primário, executa basebackup e inicia o standby
-- `00_init.sql` — cria o usuário de replicação
-- `01_pg_hba_replication.sh` — adiciona regra de replicação no `pg_hba.conf` do primário
+Both services are connected via a private Docker network (`pgnet`) and are fully isolated from your host environment.
 
-## Comandos úteis
+## ⚙️ Features
 
-Estado da replicação (primário):
-```bash
-docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB -c \
-"SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
+- PostgreSQL **16.x** (Alpine-based image)  
+- Secure authentication with **SCRAM-SHA-256**  
+- Automatic replica initialization using **pg_basebackup**  
+- **Custom entrypoint** script that waits for the primary and applies correct ownership/permissions  
+- Logical replication–ready (`wal_level=logical`)  
+- Clean startup without noisy healthchecks or excessive logs  
+- Persistent volumes for both primary and replica data  
 
+## 🧰 Use Cases
+
+- Local testing of PostgreSQL replication behavior  
+- Lab or demo setup for **CDC tools** (Qlik Replicate, Debezium, etc.)  
+- Experimentation with failover, recovery, and WAL streaming  
+- Educational purposes to understand PostgreSQL high availability mechanisms  
+
+## 🚀 Quick Start
+
+1. Copy `.env.example` to `.env` and edit credentials.
+2. Run:
+   ```bash
+   docker compose up -d
+   ```
+3. Verify replication:
+   ```bash
+   docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB      -c "SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
+   ```
+
+## 📂 Project Structure
+
+```
+pg-primary-replica/
+├── docker-compose.yaml
+├── replica-entrypoint.sh
+├── 00_init.sql
+├── 01_pg_hba_replication.sh
+├── .env.example
+└── README.md
+```
+
+## 🛡️ Notes
+
+- This setup is intended for **local/lab environments**, not for production.  
+- Ensure you **never commit your real `.env` file** with passwords.  
+- You can safely extend this setup with connection pooling (PgBouncer) or monitoring tools (pg_stat_statements, Prometheus exporters, etc.).
