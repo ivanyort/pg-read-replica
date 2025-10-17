@@ -1,7 +1,7 @@
 # 🐘 PostgreSQL 16 Primary/Replica with Docker Compose
 
 This project provides a **ready-to-run PostgreSQL 16 replication environment** using **Docker Compose**.  
-It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**, **Debezium**, or **pgoutput**.
+It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**.
 
 ## 🔍 Overview
 
