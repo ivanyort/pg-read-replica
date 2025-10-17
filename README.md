@@ -22,7 +22,7 @@ CDC tools only had the option to connect directly to the primary server to captu
 ## Project's Objective
 
 This project provides a **ready-to-run PostgreSQL 16 replication environment** using **Docker Compose**.  
-It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**, **Debezium**, or **pgoutput**.
+It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**.
 
 ## 🔍 Overview
 
@@ -48,7 +48,7 @@ Both services are connected via a private Docker network (`pgnet`) and are fully
 ## 🧮 Use Cases
 
 - Local testing of PostgreSQL replication behavior  
-- Lab or demo setup for **CDC tools** (Qlik Replicate, Debezium, etc.)  
+- Lab or demo setup for **CDC tools** (Qlik Replicate)  
 - Experimentation with failover, recovery, and WAL streaming  
 - Educational purposes to understand PostgreSQL high availability mechanisms  
 
