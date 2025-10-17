@@ -59,7 +59,12 @@ Both services are connected via a private Docker network (`pgnet`) and are fully
    ```bash
    docker compose up -d
    ```
-3. Verify replication:
+3. Source your enviroment variables
+   ```bash
+   source .env
+   ```
+
+4. Verify replication:
    ```bash
    docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB \
      -c "SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
