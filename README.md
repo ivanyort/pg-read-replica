@@ -27,7 +27,7 @@ Both services are connected via a private Docker network (`pgnet`) and are fully
 ## 🧰 Use Cases
 
 - Local testing of PostgreSQL replication behavior  
-- Lab or demo setup for **CDC tools** (Qlik Replicate, Debezium, etc.)  
+- Lab or demo setup for **CDC tools** (Qlik Replicate)  
 - Experimentation with failover, recovery, and WAL streaming  
 - Educational purposes to understand PostgreSQL high availability mechanisms  
 
