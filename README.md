@@ -1,7 +1,7 @@
 # 🐘 PostgreSQL 16 Primary/Replica with Docker Compose
 
 This project provides a **ready-to-run PostgreSQL 16 replication environment** using **Docker Compose**.  
-It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**.
+It implements a **physical streaming replication** setup via `pg_basebackup`, configured with **SCRAM-SHA-256 authentication**, and is fully compatible with **logical replication** or **Change Data Capture (CDC)** tools like **Qlik Replicate**, **Debezium**, or **pgoutput**.
 
 ## 🔍 Overview
 
@@ -24,10 +24,10 @@ Both services are connected via a private Docker network (`pgnet`) and are fully
 - Clean startup without noisy healthchecks or excessive logs  
 - Persistent volumes for both primary and replica data  
 
-## 🧰 Use Cases
+## 🧮 Use Cases
 
 - Local testing of PostgreSQL replication behavior  
-- Lab or demo setup for **CDC tools** (Qlik Replicate)  
+- Lab or demo setup for **CDC tools** (Qlik Replicate, Debezium, etc.)  
 - Experimentation with failover, recovery, and WAL streaming  
 - Educational purposes to understand PostgreSQL high availability mechanisms  
 
@@ -40,8 +40,100 @@ Both services are connected via a private Docker network (`pgnet`) and are fully
    ```
 3. Verify replication:
    ```bash
-   docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB      -c "SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
+   docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB \
+     -c "SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
    ```
+
+## 🥪 Command Cheatsheet (create / start / stop / kill)
+
+> Run these from the repository directory (where `docker-compose.yaml` lives). Replace service names when needed: `postgres_primary` and `postgres_replica` are the Compose **service** names; `pg-primary` and `pg-replica` are the **container** names.
+
+### Create / Start
+```bash
+# build images (if you add a Dockerfile later) and start in background
+docker compose up -d
+
+# (re)create only one service
+docker compose up -d postgres_replica
+
+# show status of services
+docker compose ps
+```
+
+### Stop / Start existing
+```bash
+# stop all services
+docker compose stop
+
+# stop a specific service
+docker compose stop postgres_replica
+
+# start services previously created (without recreating)
+docker compose start
+docker compose start postgres_replica
+
+# restart
+docker compose restart
+docker compose restart postgres_replica
+```
+
+### Kill / Remove
+```bash
+# send SIGKILL to containers (force-stop)
+docker kill pg-primary pg-replica
+
+# remove stopped containers from this compose project
+docker compose rm -f
+
+# stop + remove containers, default network
+docker compose down
+
+# stop + remove + delete named volumes (⚠️ wipes data)
+docker compose down -v
+```
+
+### Full reset (wipe data volumes)
+```bash
+# remove named volumes explicitly (safe if they exist)
+docker volume rm pg_primary_data pg_replica_data 2>/dev/null || true
+
+# or prune ALL unused volumes on the host (⚠️ global)
+docker volume prune -f
+```
+
+### Logs & Exec
+```bash
+# live logs (all services)
+docker compose logs -f
+
+# logs for one service
+docker compose logs -f postgres_replica
+
+# exec into a container shell
+docker exec -it pg-primary sh
+docker exec -it pg-replica sh
+
+# quick readiness check
+docker exec -it pg-primary pg_isready -h localhost -p 5432
+docker exec -it pg-replica pg_isready -h localhost -p 5432
+```
+
+### PSQL helpers
+```bash
+# connect to primary
+docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB
+
+# connect to replica (read-only)
+docker exec -it pg-replica psql -U $POSTGRES_USER -d $POSTGRES_DB
+
+# replication status (primary)
+docker exec -it pg-primary psql -U $POSTGRES_USER -d $POSTGRES_DB \
+  -c "SELECT application_name, client_addr, state, sync_state FROM pg_stat_replication;"
+
+# wal receiver status (replica)
+docker exec -it pg-replica psql -U $POSTGRES_USER -d $POSTGRES_DB \
+  -c "SELECT status, slot_name, last_msg_send_time, last_msg_receipt_time FROM pg_stat_wal_receiver;"
+```
 
 ## 📂 Project Structure
 
@@ -58,5 +150,5 @@ pg-primary-replica/
 ## 🛡️ Notes
 
 - This setup is intended for **local/lab environments**, not for production.  
-- Ensure you **never commit your real `.env` file** with passwords.  
 - You can safely extend this setup with connection pooling (PgBouncer) or monitoring tools (pg_stat_statements, Prometheus exporters, etc.).
+
