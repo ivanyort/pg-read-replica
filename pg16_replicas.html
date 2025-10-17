@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PostgreSQL 16 Primary/Replica with Docker Compose — A Step-by-Step Blog</title>
+  <style>
+    :root{--bg:#0b1020;--panel:#111834;--ink:#e7ecff;--muted:#a8b1d8;--accent:#82cfff;--ok:#6ee7b7;--warn:#fde68a;--bad:#fca5a5;--code:#0b1229;--border:#22305c}
+    html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial}
+    .container{max-width:1000px;margin:0 auto;padding:2rem 1rem 6rem}
+    h1{font-size:2.25rem;line-height:1.2;margin:0 0 1rem}
+    h2{font-size:1.5rem;margin:2.25rem 0 0.75rem}
+    h3{font-size:1.125rem;margin:1.75rem 0 0.5rem}
+    p{color:var(--ink);margin:0.5rem 0}
+    a{color:var(--accent);text-decoration:none}
+    a:hover{text-decoration:underline}
+    .muted{color:var(--muted)}
+    .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:1rem 1.25rem;margin:1rem 0}
+    .grid{display:grid;gap:1rem}
+    .two{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+    code,pre{font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    pre{background:var(--code);border:1px solid var(--border);border-radius:12px;padding:1rem;overflow:auto}
+    .kbd{display:inline-block;border:1px solid var(--border);background:rgba(255,255,255,.05);padding:.1rem .4rem;border-radius:6px;font-size:.95em}
+    .pill{display:inline-block;padding:.2rem .6rem;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:.85em;margin-right:.4rem}
+    .callout{border-left:4px solid var(--accent);padding:.75rem 1rem;background:rgba(130,207,255,.08);border-radius:10px}
+    .ok{border-left-color:var(--ok);background:rgba(110,231,183,.08)}
+    .warn{border-left-color:var(--warn);background:rgba(253,230,138,.08)}
+    .bad{border-left-color:var(--bad);background:rgba(252,165,165,.08)}
+    .toc a{display:block;padding:.25rem 0;color:var(--muted)}
+    .hr{height:1px;background:var(--border);border:0;margin:2rem 0}
+    .tagbar{margin:.5rem 0}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="tagbar">
+        <span class="pill">PostgreSQL 16</span>
+        <span class="pill">Docker Compose</span>
+        <span class="pill">Streaming Replication</span>
+        <span class="pill">SCRAM-SHA-256</span>
+      </div>
+      <h1>PostgreSQL 16 Primary/Replica with Docker Compose — How It Works</h1>
+      <p class="muted">A blog-style walkthrough explaining every step of the setup for the primary and the replica, with gotchas and troubleshooting.</p>
+    </header>
+
+    <section class="panel toc">
+      <h3>Table of Contents</h3>
+      <a href="#prereqs">1. Prerequisites & Project Layout</a>
+      <a href="#env">2. Environment Variables & Secrets</a>
+      <a href="#primary">3. Primary Node: Initialization & Security</a>
+      <a href="#replica">4. Replica Node: Bootstrap & Standby</a>
+      <a href="#slots">5. Replication Slots & WAL Streaming</a>
+      <a href="#health">6. Healthchecks, Logs & Noise Reduction</a>
+    </section>
+
+    <section id="prereqs">
+      <h2>1) Prerequisites & Project Layout</h2>
+      <p>We keep the repository minimal and reproducible. Here’s the recommended structure:</p>
+      <pre><code>pg-primary-replica/
+├── docker-compose.yaml
+├── replica-entrypoint.sh
+├── 00_init.sql
+├── 01_pg_hba_replication.sh
+├── .env.example
+└── README.md
+</code></pre>
+      <div class="callout">
+        <strong>Why this layout?</strong> It separates cluster initialization (<code>00_init.sql</code> and <code>01_pg_hba_replication.sh</code>) from runtime bootstrap logic (<code>replica-entrypoint.sh</code>), keeping secrets out of Git via <code>.env</code>.
+      </div>
+    </section>
+
+    <section id="env">
+      <h2>2) Environment Variables & Secrets</h2>
+      <p>Use a local <code>.env</code> file (not committed) and a committed <code>.env.example</code> with placeholders.</p>
+      <pre><code># .env (do not commit)
+POSTGRES_USER=user
+POSTGRES_PASSWORD=change_me
+POSTGRES_DB=postgres
+REPL_USER=replicator
+REPL_PASSWORD=change_me_too
+</code></pre>
+      <p>The <code>docker-compose.yaml</code> references these values so credentials never appear in the repo history.</p>
+    </section>
+
+    <section id="primary">
+      <h2>3) Primary Node: Initialization & Security</h2>
+      <p>The primary is a vanilla <code>postgres:16-alpine</code> container tuned for replication. On first start, the official entrypoint runs our init scripts:</p>
+      <div class="grid two">
+        <div>
+          <h3>3.1 <code>00_init.sql</code> — Create the replication role</h3>
+          <pre><code>DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'replicator') THEN
+    CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD '...';
+  END IF;
+END$$;
+</code></pre>
+          <p>We create a dedicated <em>replication</em> user with <code>LOGIN</code> and <code>REPLICATION</code> attributes, used by the replica (and optionally by tools like <em>pg_basebackup</em>).</p>
+        </div>
+        <div>
+          <h3>3.2 <code>01_pg_hba_replication.sh</code> — Allow replication connections</h3>
+          <pre><code>#!/bin/sh
+set -eu
+echo "host replication replicator 0.0.0.0/0 scram-sha-256" \
+  >> "$PGDATA/pg_hba.conf"
+</code></pre>
+          <p>This appends a replication <code>pg_hba.conf</code> line so the replica can authenticate using SCRAM-SHA-256. Without this, <code>pg_basebackup</code> fails.</p>
+        </div>
+      </div>
+      <h3>3.3 Primary server parameters</h3>
+      <pre><code>postgres \
+  -c listen_addresses='*' \
+  -c wal_level=logical \
+  -c hot_standby=on \
+  -c max_wal_senders=50 \
+  -c max_replication_slots=50 \
+  -c "log_line_prefix=%m [%p] %u@%d %r %a "
+</code></pre>
+      <ul>
+        <li><code>wal_level=logical</code>: enables both physical and logical replication.</li>
+        <li><code>max_wal_senders</code>/<code>max_replication_slots</code>: room for experiments and multiple replicas/tools.</li>
+        <li><code>hot_standby=on</code>: allows reads during recovery (relevant on promoted nodes).</li>
+      </ul>
+    </section>
+
+    <section id="replica">
+      <h2>4) Replica Node: Bootstrap & Standby</h2>
+      <p>The replica starts as <code>root</code> only to fix volume permissions, then re-execs as <code>postgres</code>. The custom entrypoint performs three key tasks:</p>
+      <ol>
+        <li><strong>Fix ownership/permissions</strong> on the data dir (common cause of <em>invalid permissions</em> errors).</li>
+        <li><strong>Wait for the primary</strong> using <code>pg_isready</code> to avoid connection refused loops.</li>
+        <li><strong>Run <code>pg_basebackup</code></strong> once to clone the cluster, generate <code>standby.signal</code> and configure <code>primary_conninfo</code>/<code>primary_slot_name</code>.</li>
+      </ol>
+      <pre><code>#!/bin/sh
+set -eux
+PGDATA_DIR="${PGDATA:-/var/lib/postgresql/data}"
+# drop privileges after fixing perms
+if [ "$(id -u)" = "0" ] && [ -z "${ALREADY_DROPPED_PRIVS:-}" ]; then
+  chown -R postgres:postgres "$PGDATA_DIR" || true
+  chmod 700 "$PGDATA_DIR" || true
+  exec su-exec postgres /bin/sh -c 'ALREADY_DROPPED_PRIVS=1 exec /usr/local/bin/replica-entrypoint.sh'
+fi
+until pg_isready -h pg-primary -p 5432 -U user -d postgres; do sleep 2; done
+if [ ! -f "$PGDATA_DIR/PG_VERSION" ]; then
+  PGPASSWORD="$PGPASSWORD" pg_basebackup -R -X stream -C -S pgslot1 \
+    -h pg-primary -p 5432 -U "$PGUSER" -D "$PGDATA_DIR" -v
+  echo "hot_standby = on" >> "$PGDATA_DIR/postgresql.auto.conf"
+fi
+exec postgres \
+  -c listen_addresses='*' \
+  -c wal_level=logical \
+  -c max_wal_senders=50 \
+  -c max_replication_slots=50 \
+  -c hot_standby=on \
+  -c hot_standby_feedback=on \
+  -c max_standby_streaming_delay='10min' \
+  -c "log_line_prefix=%m [%p] %u@%d %r %a "
+</code></pre>
+      <div class="callout ok">
+        <strong>Why <code>-R -X stream -C -S &lt;slot&gt;</code>?</strong> <code>-R</code> creates <code>standby.signal</code> and appends connection info; <code>-X stream</code> streams WAL during the basebackup; <code>-C -S pgslot1</code> creates and uses a physical replication slot, preventing WAL removal before the replica receives it.
+      </div>
+    </section>
+
+    <section id="slots">
+      <h2>5) Replication Slots & WAL Streaming</h2>
+      <p>On the primary, you can observe replication activity and slots with:</p>
+      <pre><code>-- Primary: streaming state
+SELECT application_name, client_addr, state, sync_state
+FROM pg_stat_replication;
+
+-- Primary: slots
+SELECT slot_name, slot_type, active, restart_lsn
+FROM pg_replication_slots;
+</code></pre>
+      <p>On the replica, the WAL receiver status shows connectivity and assigned slot:</p>
+      <pre><code>SELECT status, slot_name, last_msg_send_time, last_msg_receipt_time
+FROM pg_stat_wal_receiver;
+</code></pre>
+    </section>
+
+    <section id="health">
+      <h2>6) Healthchecks, Logs & Noise Reduction</h2>
+      <p>Healthchecks like <code>pg_isready</code> can flood logs if <code>log_connections</code> is enabled. This setup omits healthchecks by design; the replica’s entrypoint already waits for the primary. If you need a healthcheck, consider a PID-file approach (no connection):</p>
+      <pre><code>pg_ctl -D /var/lib/postgresql/data status &gt;/dev/null 2&gt;&1
+</code></pre>
+      <div class="callout warn">
+        <strong>Tip:</strong> Keep <code>log_connections=off</code> in lab setups to avoid noisy logs. Use a concise <code>log_line_prefix</code> for traceability.
+      </div>
+    </section>
+
+    <div class="hr"></div>
+    <footer class="muted">
+      <p>Made for hands-on labs and demos. Tweak freely, file issues, and share improvements.</p>
+    </footer>
+  </div>
+</body>
+</html>
