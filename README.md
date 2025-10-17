@@ -8,7 +8,7 @@ PostgreSQL 16 introduced the ability to create logical replication slots and per
 
 > “logical decoding cannot be used while in recovery”
 
-CDC tools like **Debezium** had to connect directly to the primary server to capture data changes.
+CDC tools only had the option to connect directly to the primary server to capture data changes.
 
 **PostgreSQL 16 and Later:** You can now point CDC tools such as **Qlik Replicate** to a replica server instead of connecting to your primary. This works for logical replication and logical decoding operations.
 
